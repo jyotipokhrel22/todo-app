@@ -1,50 +1,85 @@
 <?php
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set headers
 header('Content-Type: application/xml; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST');
+header('Access-Control-Allow-Headers: Content-Type');
 
 // Database connection
 $conn = new mysqli('localhost', 'root', '', 'todo_db');
+
+// Set charset to handle special characters
+$conn->set_charset("utf8mb4");
 
 if ($conn->connect_error) {
     outputError('Database connection failed: ' . $conn->connect_error);
 }
 
 // Handle different actions
-$action = $_REQUEST['action'] ?? '';
+$action = isset($_REQUEST['action']) ? $_REQUEST['action'] : '';
 
-switch ($action) {
-    case 'list':
-        listTodos();
-        break;
-    case 'add':
-        addTodo();
-        break;
-    case 'update':
-        updateTodo();
-        break;
-    case 'delete':
-        deleteTodo();
-        break;
-    case 'clear_completed':
-        clearCompleted();
-        break;
-    case 'count':
-        countTodos();
-        break;
-    default:
-        outputError('Invalid action');
+try {
+    switch ($action) {
+        case 'list':
+            listTodos();
+            break;
+        case 'add':
+            if (!isset($_POST['todo'])) {
+                outputError('Missing todo data');
+            }
+            addTodo();
+            break;
+        case 'update':
+            if (!isset($_POST['id']) || !isset($_POST['todo'])) {
+                outputError('Missing id or todo data');
+            }
+            updateTodo();
+            break;
+        case 'delete':
+            if (!isset($_POST['id'])) {
+                outputError('Missing id');
+            }
+            deleteTodo();
+            break;
+        case 'clear_completed':
+            clearCompleted();
+            break;
+        case 'count':
+            countTodos();
+            break;
+        default:
+            outputError('Invalid action');
+    }
+} catch (Exception $e) {
+    outputError('Server error: ' . $e->getMessage());
 }
 
 // Function to parse incoming XML
 function parseIncomingXML($xmlString) {
+    libxml_use_internal_errors(true);
     $xml = simplexml_load_string($xmlString);
+    
     if ($xml === false) {
-        outputError('Invalid XML data');
+        $errors = [];
+        foreach(libxml_get_errors() as $error) {
+            $errors[] = $error->message;
+        }
+        libxml_clear_errors();
+        outputError('Invalid XML data: ' . implode(', ', $errors));
     }
+    
     return $xml;
 }
 
 // Function to output XML response
 function outputXML($xml) {
+    if (!headers_sent()) {
+        header('Content-Type: application/xml; charset=utf-8');
+    }
     echo $xml;
     exit;
 }
@@ -52,7 +87,10 @@ function outputXML($xml) {
 // Function to output error in XML format
 function outputError($message) {
     $xml = '<?xml version="1.0" encoding="UTF-8"?>';
-    $xml .= '<error>' . htmlspecialchars($message) . '</error>';
+    $xml .= '<response>';
+    $xml .= '<status>error</status>';
+    $xml .= '<message>' . htmlspecialchars($message) . '</message>';
+    $xml .= '</response>';
     outputXML($xml);
 }
 
@@ -60,7 +98,7 @@ function outputError($message) {
 function listTodos() {
     global $conn;
     
-    $filter = $_GET['filter'] ?? 'all';
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
     $where = '';
     
     switch ($filter) {
@@ -74,19 +112,26 @@ function listTodos() {
     
     $result = $conn->query("SELECT * FROM todos {$where} ORDER BY timestamp DESC");
     
+    if (!$result) {
+        outputError('Database error: ' . $conn->error);
+    }
+    
     $xml = '<?xml version="1.0" encoding="UTF-8"?>';
+    $xml .= '<response>';
+    $xml .= '<status>success</status>';
     $xml .= '<todos>';
     
     while ($row = $result->fetch_assoc()) {
         $xml .= '<todo>';
-        $xml .= '<id>' . $row['id'] . '</id>';
+        $xml .= '<id>' . htmlspecialchars($row['id']) . '</id>';
         $xml .= '<text>' . htmlspecialchars($row['text']) . '</text>';
         $xml .= '<completed>' . ($row['completed'] ? 'true' : 'false') . '</completed>';
-        $xml .= '<timestamp>' . $row['timestamp'] . '</timestamp>';
+        $xml .= '<timestamp>' . htmlspecialchars($row['timestamp']) . '</timestamp>';
         $xml .= '</todo>';
     }
     
     $xml .= '</todos>';
+    $xml .= '</response>';
     outputXML($xml);
 }
 
@@ -95,20 +140,38 @@ function addTodo() {
     global $conn;
     
     $todoXml = parseIncomingXML($_POST['todo']);
-    $text = $conn->real_escape_string($todoXml->text);
-    $timestamp = $todoXml->timestamp;
     
-    $sql = "INSERT INTO todos (text, completed, timestamp) VALUES ('$text', 0, '$timestamp')";
+    if (empty($todoXml->text)) {
+        outputError('Todo text cannot be empty');
+    }
     
-    if ($conn->query($sql)) {
+    $text = $conn->real_escape_string((string)$todoXml->text);
+    $timestamp = (string)$todoXml->timestamp;
+    
+    if (!is_numeric($timestamp)) {
+        outputError('Invalid timestamp');
+    }
+    
+    $sql = "INSERT INTO todos (text, completed, timestamp) VALUES (?, 0, ?)";
+    $stmt = $conn->prepare($sql);
+    
+    if (!$stmt) {
+        outputError('Database error: ' . $conn->error);
+    }
+    
+    $stmt->bind_param('ss', $text, $timestamp);
+    
+    if ($stmt->execute()) {
         $xml = '<?xml version="1.0" encoding="UTF-8"?>';
         $xml .= '<response>';
         $xml .= '<status>success</status>';
-        $xml .= '<id>' . $conn->insert_id . '</id>';
+        $xml .= '<id>' . $stmt->insert_id . '</id>';
         $xml .= '</response>';
+        $stmt->close();
         outputXML($xml);
     } else {
-        outputError('Failed to add todo');
+        $stmt->close();
+        outputError('Failed to add todo: ' . $stmt->error);
     }
 }
 
@@ -116,19 +179,42 @@ function addTodo() {
 function updateTodo() {
     global $conn;
     
-    $id = (int)$_POST['id'];
+    $id = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if ($id === false) {
+        outputError('Invalid ID');
+    }
+    
     $todoXml = parseIncomingXML($_POST['todo']);
-    $text = $conn->real_escape_string($todoXml->text);
-    $completed = ($todoXml->completed == 'true') ? 1 : 0;
     
-    $sql = "UPDATE todos SET text = '$text', completed = $completed WHERE id = $id";
+    if (empty($todoXml->text)) {
+        outputError('Todo text cannot be empty');
+    }
     
-    if ($conn->query($sql)) {
-        $xml = '<?xml version="1.0" encoding="UTF-8"?>';
-        $xml .= '<response><status>success</status></response>';
-        outputXML($xml);
+    $text = $conn->real_escape_string((string)$todoXml->text);
+    $completed = ((string)$todoXml->completed === 'true') ? 1 : 0;
+    
+    $sql = "UPDATE todos SET text = ?, completed = ? WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    
+    if (!$stmt) {
+        outputError('Database error: ' . $conn->error);
+    }
+    
+    $stmt->bind_param('sii', $text, $completed, $id);
+    
+    if ($stmt->execute()) {
+        if ($stmt->affected_rows > 0) {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>';
+            $xml .= '<response><status>success</status></response>';
+            $stmt->close();
+            outputXML($xml);
+        } else {
+            $stmt->close();
+            outputError('Todo not found');
+        }
     } else {
-        outputError('Failed to update todo');
+        $stmt->close();
+        outputError('Failed to update todo: ' . $stmt->error);
     }
 }
 
@@ -136,15 +222,33 @@ function updateTodo() {
 function deleteTodo() {
     global $conn;
     
-    $id = (int)$_POST['id'];
-    $sql = "DELETE FROM todos WHERE id = $id";
+    $id = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if ($id === false) {
+        outputError('Invalid ID');
+    }
     
-    if ($conn->query($sql)) {
-        $xml = '<?xml version="1.0" encoding="UTF-8"?>';
-        $xml .= '<response><status>success</status></response>';
-        outputXML($xml);
+    $sql = "DELETE FROM todos WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    
+    if (!$stmt) {
+        outputError('Database error: ' . $conn->error);
+    }
+    
+    $stmt->bind_param('i', $id);
+    
+    if ($stmt->execute()) {
+        if ($stmt->affected_rows > 0) {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>';
+            $xml .= '<response><status>success</status></response>';
+            $stmt->close();
+            outputXML($xml);
+        } else {
+            $stmt->close();
+            outputError('Todo not found');
+        }
     } else {
-        outputError('Failed to delete todo');
+        $stmt->close();
+        outputError('Failed to delete todo: ' . $stmt->error);
     }
 }
 
@@ -159,7 +263,7 @@ function clearCompleted() {
         $xml .= '<response><status>success</status></response>';
         outputXML($xml);
     } else {
-        outputError('Failed to clear completed todos');
+        outputError('Failed to clear completed todos: ' . $conn->error);
     }
 }
 
@@ -168,14 +272,21 @@ function countTodos() {
     global $conn;
     
     $result = $conn->query("SELECT COUNT(*) as count FROM todos WHERE completed = 0");
+    
+    if (!$result) {
+        outputError('Database error: ' . $conn->error);
+    }
+    
     $count = $result->fetch_assoc()['count'];
     
     $xml = '<?xml version="1.0" encoding="UTF-8"?>';
     $xml .= '<response>';
-    $xml .= '<count>' . $count . '</count>';
+    $xml .= '<status>success</status>';
+    $xml .= '<count>' . htmlspecialchars($count) . '</count>';
     $xml .= '</response>';
     outputXML($xml);
 }
 
+// Close the database connection
 $conn->close();
 ?> 
