@@ -33,6 +33,7 @@ try {
             }
             addTodo();
             break;
+            
         case 'update':
             if (!isset($_POST['id']) || !isset($_POST['todo'])) {
                 outputError('Missing id or todo data');
@@ -113,6 +114,7 @@ function listTodos() {
     $result = $conn->query("SELECT * FROM todos {$where} ORDER BY timestamp DESC");
     
     if (!$result) {
+        error_log("Database error in listTodos: " . $conn->error);
         outputError('Database error: ' . $conn->error);
     }
     
@@ -126,6 +128,7 @@ function listTodos() {
         $xml .= '<id>' . htmlspecialchars($row['id']) . '</id>';
         $xml .= '<text>' . htmlspecialchars($row['text']) . '</text>';
         $xml .= '<completed>' . ($row['completed'] ? 'true' : 'false') . '</completed>';
+        $xml .= '<priority>' . htmlspecialchars($row['priority']) . '</priority>';
         $xml .= '<timestamp>' . htmlspecialchars($row['timestamp']) . '</timestamp>';
         $xml .= '</todo>';
     }
@@ -139,39 +142,62 @@ function listTodos() {
 function addTodo() {
     global $conn;
     
-    $todoXml = parseIncomingXML($_POST['todo']);
-    
-    if (empty($todoXml->text)) {
-        outputError('Todo text cannot be empty');
-    }
-    
-    $text = $conn->real_escape_string((string)$todoXml->text);
-    $timestamp = (string)$todoXml->timestamp;
-    
-    if (!is_numeric($timestamp)) {
-        outputError('Invalid timestamp');
-    }
-    
-    $sql = "INSERT INTO todos (text, completed, timestamp) VALUES (?, 0, ?)";
-    $stmt = $conn->prepare($sql);
-    
-    if (!$stmt) {
-        outputError('Database error: ' . $conn->error);
-    }
-    
-    $stmt->bind_param('ss', $text, $timestamp);
-    
-    if ($stmt->execute()) {
-        $xml = '<?xml version="1.0" encoding="UTF-8"?>';
-        $xml .= '<response>';
-        $xml .= '<status>success</status>';
-        $xml .= '<id>' . $stmt->insert_id . '</id>';
-        $xml .= '</response>';
-        $stmt->close();
-        outputXML($xml);
-    } else {
-        $stmt->close();
-        outputError('Failed to add todo: ' . $stmt->error);
+    try {
+        // Check if table exists
+        $tableCheck = $conn->query("SHOW TABLES LIKE 'todos'");
+        if ($tableCheck->num_rows === 0) {
+            // Create table if it doesn't exist
+            $createTable = "CREATE TABLE IF NOT EXISTS todos (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                text TEXT NOT NULL,
+                completed BOOLEAN DEFAULT FALSE,
+                priority VARCHAR(10) DEFAULT 'normal',
+                timestamp BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+            
+            if (!$conn->query($createTable)) {
+                throw new Exception("Failed to create table: " . $conn->error);
+            }
+        }
+        
+        $todoXml = parseIncomingXML($_POST['todo']);
+        
+        if (empty($todoXml->text)) {
+            throw new Exception('Todo text cannot be empty');
+        }
+        
+        $text = $conn->real_escape_string((string)$todoXml->text);
+        $timestamp = (string)$todoXml->timestamp;
+        $priority = $conn->real_escape_string((string)$todoXml->priority ?: 'normal');
+        
+        if (!is_numeric($timestamp)) {
+            throw new Exception('Invalid timestamp');
+        }
+        
+        $sql = "INSERT INTO todos (text, completed, priority, timestamp) VALUES (?, 0, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        
+        if (!$stmt) {
+            throw new Exception('Database error: ' . $conn->error);
+        }
+        
+        $stmt->bind_param('sss', $text, $priority, $timestamp);
+        
+        if ($stmt->execute()) {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>';
+            $xml .= '<response>';
+            $xml .= '<status>success</status>';
+            $xml .= '<id>' . $stmt->insert_id . '</id>';
+            $xml .= '</response>';
+            $stmt->close();
+            outputXML($xml);
+        } else {
+            throw new Exception('Failed to add todo: ' . $stmt->error);
+        }
+    } catch (Exception $e) {
+        error_log("Error in addTodo: " . $e->getMessage());
+        outputError($e->getMessage());
     }
 }
 
