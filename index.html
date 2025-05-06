@@ -3,21 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todo App</title>
+    <title>Modern Todo App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Todo List</h1>
-        <div class="todo-input">
-            <input type="text" id="todoInput" placeholder="Enter your task...">
-            <button id="addTodo">Add Task</button>
-        </div>
-        <div class="todo-list">
-            <!-- Todo items will be dynamically added here -->
+    <div class="app-container">
+        <div class="container">
+            <header class="app-header">
+                <h1><i class="fas fa-check-circle"></i> Todo List</h1>
+                <p class="subtitle">Organize your tasks efficiently</p>
+            </header>
+
+            <div class="todo-input">
+                <div class="input-wrapper">
+                    <input type="text" id="todoInput" placeholder="What needs to be done?">
+                    <button id="addTodo">
+                        <i class="fas fa-plus"></i>
+                        <span>Add Task</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="filters">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="active">Active</button>
+                <button class="filter-btn" data-filter="completed">Completed</button>
+            </div>
+
+            <div class="todo-list">
+                <!-- Todo items will be dynamically added here -->
+            </div>
+
+            <div class="todo-stats">
+                <span id="tasks-count">0 tasks left</span>
+                <button id="clear-completed">Clear completed</button>
+            </div>
         </div>
     </div>
+
+    <div id="loader" class="loader">
+        <div class="spinner"></div>
+    </div>
+
     <script src="js/script.js"></script>
 </body>
 </html> 
