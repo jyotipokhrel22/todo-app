@@ -5,20 +5,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modern Todo App</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
+    <div class="theme-switch">
+        <label class="switch">
+            <input type="checkbox" id="themeToggle">
+            <span class="slider round"></span>
+        </label>
+    </div>
+
     <div class="app-container">
         <div class="container">
             <header class="app-header">
-                <h1><i class="fas fa-check-circle"></i> Todo List</h1>
+                <div class="logo-wrapper">
+                    <div class="logo">
+                        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="18" cy="18" r="18" fill="currentColor" fill-opacity="0.2"/>
+                            <path d="M26 12L15 23L10 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h1>Todo List</h1>
+                </div>
                 <p class="subtitle">Organize your tasks efficiently</p>
+                <div class="date-display">
+                    <i class="far fa-calendar"></i>
+                    <span id="currentDate"></span>
+                </div>
             </header>
+
+            <div class="quick-stats">
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-list-check"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span id="totalTasks">0</span>
+                        <label>Total Tasks</label>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span id="completedTasks">0</span>
+                        <label>Completed</label>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span id="pendingTasks">0</span>
+                        <label>Pending</label>
+                    </div>
+                </div>
+            </div>
 
             <div class="todo-input">
                 <div class="input-wrapper">
-                    <input type="text" id="todoInput" placeholder="What needs to be done?">
+                    <div class="input-container">
+                        <i class="fas fa-tasks input-icon"></i>
+                        <input type="text" id="todoInput" placeholder="What needs to be done?">
+                    </div>
+                    <div class="priority-selector">
+                        <select id="prioritySelect">
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
                     <button id="addTodo">
                         <i class="fas fa-plus"></i>
                         <span>Add Task</span>
@@ -26,25 +88,56 @@
                 </div>
             </div>
 
-            <div class="filters">
-                <button class="filter-btn active" data-filter="all">All</button>
-                <button class="filter-btn" data-filter="active">Active</button>
-                <button class="filter-btn" data-filter="completed">Completed</button>
+            <div class="filters-section">
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all">
+                        <i class="fas fa-layer-group"></i>
+                        <span>All</span>
+                    </button>
+                    <button class="filter-btn" data-filter="active">
+                        <i class="fas fa-circle-half-stroke"></i>
+                        <span>Active</span>
+                    </button>
+                    <button class="filter-btn" data-filter="completed">
+                        <i class="fas fa-circle-check"></i>
+                        <span>Completed</span>
+                    </button>
+                </div>
+                <div class="sort-options">
+                    <select id="sortSelect">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="priority">By Priority</option>
+                    </select>
+                </div>
             </div>
 
             <div class="todo-list">
                 <!-- Todo items will be dynamically added here -->
             </div>
 
-            <div class="todo-stats">
-                <span id="tasks-count">0 tasks left</span>
-                <button id="clear-completed">Clear completed</button>
+            <div class="todo-footer">
+                <div class="todo-stats">
+                    <span id="tasks-count">0 tasks left</span>
+                    <button id="clear-completed">
+                        <i class="fas fa-trash-alt"></i>
+                        <span>Clear completed</span>
+                    </button>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress" id="completionProgress"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="loader" class="loader">
         <div class="spinner"></div>
+    </div>
+
+    <div class="notification" id="notification">
+        <i class="fas fa-info-circle"></i>
+        <span class="notification-message"></span>
     </div>
 
     <script src="js/script.js"></script>
